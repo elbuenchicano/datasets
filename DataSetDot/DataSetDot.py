@@ -3,6 +3,22 @@ import graphviz as gv
 import glob, os
 import functools 
 import fileinput
+import queue
+from   collections import deque
+
+class DirectoryNode:
+    father_ = ""
+    name_   = ""
+    tags_   = "" 
+    id_     = ""
+    
+    def __init__(self, name, fatherid, id, tags):
+        self.name_   = name
+        self.father_ = fatherid
+        self.id_     = id
+        self.tags_   = tags
+
+################################################################################
 
 def add_nodes(graph, nodes):
     for n in nodes:
@@ -58,12 +74,30 @@ styles = {
 }
 
 ################################################################################
+def listdir_fullpath(d, token):
+    list    = []
+    hasflag = False
+    infof   = ""
+    for f in os.listdir(d):
+        full = os.path.join(d, f)
+        if f.find(token) > -1:
+            hasflag = True
+            infof   = full
+            
+        if os.path.isdir(full) == True:
+            list.append(full)
+
+    if hasflag == True:
+        return (list, infof)
+    return ([],"")
+
+################################################################################
 def readTagsFromFile(filename):
-    for line in fileinput.input(filename):
-        pos = line.find("tags:")
-        if pos > -1:
-            tags = line.split("tags:",1)
-            return tags
+    for line in open(filename):
+        pos  = line.find("tags:")
+        if  pos > -1:
+            return line[(pos+6):]
+    return ""
         
 ###############################################################################
 #get the last name
@@ -94,50 +128,53 @@ def builderLabelInfo(root, full, info):
     str = '< <TABLE bgcolor="beige" cellspacing="0" border="0" cellborder="0">'
     str = str + '<TR><TD href="' + full.replace("\\","/") + '">'
     str = str + getLastName(root)   + '</TD></TR>' 
-    str = str + '<TD><TR>' + info   + '</TD></TR> </TABLE>>'
+    str = str + '<TR><TD>' + info   + '</TD></TR> </TABLE>>'
     return str
-
 
 ###############################################################################
 #directory: source directory
-def buildGraph(directory, outDirectory):
-    #svg html format
-    #creating the graph base
-    graph   = functools.partial(gv.Graph, format='svg')
-    edges   = []
-    
-    #appending the root
-    cleanD  = ridofTwoPoitns_Back(directory)
-    nodes   = [(cleanD, {'label': builderLabel(directory, directory)})]
+def buildGraphDirectory(que, token):
+    ID = fatherID = 0
+    while len(que) > 0: 
+        top  = que.popleft()
+        list = listdir_fullpath(top[0], token)
 
-    #walking trouhgt directory
-    for root, dirs, files in os.walk(dir):
-        print(root)
-        hasinfo = False
-        finfo   = ""
+        if len(list[0]) > 0:
+            tags = readTagsFromFile(list[1])
+            node = DirectoryNode(top[0], str(fatherID), str(ID), tags)
+            listNodes.append(node)
+            fatherID = ID
+            ID   = ID + 1
 
-        #looking for info file
-        for file in files:
-            if file.endswith(".info"):
-                finfo    = print(os.path.join(root, file))
-                hasinfo = True
+        for sons in list[0]:
+            que.append( (sons, fatherID) )
 
-        #only directories with info
-        if hasinfo == True:
-            #tags = readTagsFromFile(finfo)
-            for dire in dirs:
-                full    = os.path.join(root, dire)
-                lbl     = builderLabel(dire, full)
-                cleanD  = ridofTwoPoitns_Back(full)
-                cleanR  = ridofTwoPoitns_Back(root)
-                nodes.append(
-                    (cleanD, {'label': lbl})
-                )
-                edges.append(
-                    (cleanR, cleanD)
-                )
+#end buildgraphDirectory
+######################################################################################
+def initGraphDirectory(directory, token):
+    global listNodes
+    listNodes = [ ]
+    que       = deque([ (directory, 0) ])
+    buildGraphDirectory(que, token)
 
+#end initGraphDirectory
+######################################################################################
+def buildDot(outDirectory):
+    nodes = []
+    edges = []
+    for nodeD in listNodes:
+        #lbl = builderLabel(getLastName(nodeD.name_), nodeD.name_)
+        lbl = builderLabelInfo(getLastName(nodeD.name_), nodeD.name_, nodeD.tags_)
+        nodes.append(
+            (nodeD.id_, {'label': lbl})
+        )
+    listNroot = listNodes[1:]
+    for nodeD in listNroot:
+        edges.append(
+            (nodeD.father_, nodeD.id_)
+        )
     #creating the graph    
+    graph   = functools.partial(gv.Graph, format='svg')
     out = add_edges(
         add_nodes(graph(),nodes),
         edges
@@ -145,15 +182,15 @@ def buildGraph(directory, outDirectory):
     #applying the style
     out = apply_styles(out, styles)
     out.render(outDirectory)
-    
-#end buildgraph
-################################################################################
-######################################################################################
-######################################################################################
+
+#endbuildDot
 ######################################################################################
 if __name__ == "__main__":
     dir     = "z:\\DATASETS"
-    outdir  = "s:/Documents/g2"
-    buildGraph(dir, outdir)
-    
+    outdir  = "s:/Documents/g3"
+    token   = ".info"
+    initGraphDirectory(dir, token)
+    buildDot(outdir)
+
+
     
